@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Capacitor, registerPlugin } from '@capacitor/core'
+
+const ScreenCapture = registerPlugin('ScreenCapture')
 import './App.css'
 
 function App() {
@@ -16,6 +19,9 @@ function App() {
     localStorage.setItem("1stborn-session-started", sessionStartedAt)
     localStorage.setItem("1stborn-session-rounds", JSON.stringify(sessionRounds))
   }, [sessionActive, sessionStartedAt, sessionRounds])
+
+  const [capturePermission, setCapturePermission] = useState('not requested')
+  const [captureMessage, setCaptureMessage] = useState('Screen capture permission has not been requested.')
 
   const [mineCount, setMineCount] = useState(3)
   const [safePicks, setSafePicks] = useState(1)
@@ -130,6 +136,46 @@ function App() {
     setSessionActive(false)
   }
 
+  async function requestScreenCapturePermission() {
+    if (!Capacitor.isNativePlatform()) {
+      setCaptureMessage('Install the Android app to request screen capture permission.')
+      return
+    }
+
+    try {
+      setCaptureMessage('Waiting for Android permission...')
+      const response = await ScreenCapture.requestPermission()
+      setCapturePermission(response.granted ? 'granted' : 'denied')
+      setCaptureMessage(response.granted
+        ? 'Permission granted. Screen capture service is not started yet.'
+        : 'Permission denied. You can try again whenever you are ready.')
+    } catch (error) {
+      setCapturePermission('error')
+      setCaptureMessage(error?.message || 'Could not request screen capture permission.')
+    }
+  }
+
+  async function startScreenCapture() {
+    try {
+      setCaptureMessage('Starting Android screen capture service...')
+      const response = await ScreenCapture.startCapture()
+      if (response.started) {
+        setCaptureMessage('Capture start requested. Check for the 1StBorN Predictor notification.')
+      }
+    } catch (error) {
+      setCaptureMessage(error?.message || 'Could not start screen capture.')
+    }
+  }
+
+  async function stopScreenCapture() {
+    try {
+      await ScreenCapture.stopCapture()
+      setCaptureMessage('Screen capture stop requested.')
+    } catch (error) {
+      setCaptureMessage(error?.message || 'Could not stop screen capture.')
+    }
+  }
+
   function addResult(event) {
     event.preventDefault()
     const value = Number(multiplier)
@@ -225,6 +271,26 @@ function App() {
                 <button type="button" onClick={stopSession}>STOP SESSION</button>
               )}
             </div>
+            <div className="session-actions">
+              {capturePermission !== 'granted' ? (
+                <button type="button" onClick={requestScreenCapturePermission}>
+                  REQUEST SCREEN PERMISSION
+                </button>
+              ) : (
+                <>
+                  <button type="button" onClick={startScreenCapture}>
+                    START SCREEN CAPTURE
+                  </button>
+                  <button type="button" onClick={stopScreenCapture}>
+                    STOP SCREEN CAPTURE
+                  </button>
+                </>
+              )}
+              <span className={`session-status ${capturePermission === 'granted' ? 'active' : ''}`}>
+                {capturePermission.toUpperCase()}
+              </span>
+            </div>
+            <p className="disclaimer">{captureMessage}</p>
             <div className="session-summary">
               <div><span>SESSION ROUNDS</span><strong>{sessionRounds.length}</strong></div>
               <div><span>STARTED</span><strong>{sessionStartedAt ? new Date(sessionStartedAt).toLocaleTimeString() : "--"}</strong></div>
